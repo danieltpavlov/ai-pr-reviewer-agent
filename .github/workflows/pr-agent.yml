@@ -1,0 +1,41 @@
+name: AI PR Reviewer Agent
+
+# Казваме на GitHub да пуска агента при отваряне или обновяване на Pull Request
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+# Даваме права на машината да пише коментари по Pull Requests
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Изтегляме кода на проекта в облачната машина
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Инсталираме Python 3.11
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 3. Инсталираме библиотеките от requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 4. Пускаме нашия Python агент с динамичните данни от GitHub
+      - name: Run AI Reviewer
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python main.py --repo "${{ github.repository }}" --pr "${{ github.event.pull_request.number }}"
