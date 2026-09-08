@@ -1,26 +1,33 @@
 import os
 from dotenv import load_dotenv
 from google import genai
+from pydantic import BaseModel, Field
 
-# Зареждаме GEMINI_API_KEY от .env файла
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 
 if not api_key:
     raise ValueError("❌ Грешка: GEMINI_API_KEY липсва в .env файла!")
 
-# Инициализираме новия клиент на Google GenAI
 client = genai.Client(api_key=api_key)
 
 
-def analyze_code_diff(pr_title: str, diff_text: str) -> str:
+# Дефинираме строгата схема на изхода
+class ReviewReport(BaseModel):
+    summary: str = Field(description="Кратко резюме на направените промени в кода.")
+    security_risks: list[str] = Field(
+        description="Списък с потенциални уязвимости, изтекли тайни или съображения за сигурност.")
+    recommendations: list[str] = Field(
+        description="Списък с препоръки за подобрение на кода, форматирането или архитектурата.")
+
+
+def analyze_code_diff(pr_title: str, diff_text: str) -> ReviewReport:
     """
-    Приема заглавие на PR и извлечения Diff код,
-    след което връща структуриран преглед от Gemini.
+    Анализира Diff код и връща типизиран обект ReviewReport.
     """
     prompt = f"""
-Ти си опитен старши софтуерен инженер и специалист по сигурност.
-Твоята задача е да направиш бърз и стегнат Code Review на промените в следния Pull Request.
+Ти си старши софтуерен инженер и експерт по киберсигурност.
+Направи детайлен Code Review на следния Pull Request.
 
 Заглавие на PR: {pr_title}
 
@@ -29,20 +36,21 @@ def analyze_code_diff(pr_title: str, diff_text: str) -> str:
 {diff_text}
 \"\"\"
 
-Моля, форматирай отговора си в Markdown със следните три ясни секции:
-1. 📋 **Резюме на промените**: Обясни накратко какво прави този код.
-2. 🔒 **Сигурност и потенциални рискове**: Провери за хардкоднати тайни, API ключове, пароли или логически пропуски.
-3. 💡 **Препоръки за подобрение**: Дай съвет за чист код, тестове или документация (ако е приложимо).
-
-Бъди конструктивен, точен и пиши на български език.
+Анализирай промените внимателно и попълни съответните полета на български език.
 """
 
-    print("🤖 AI агентът анализира кода през Gemini...")
+    print("🤖 AI агентът анализира кода през Gemini (Structured Output)...")
 
-    # Използваме бързия и икономичен модел gemini-3.6-flash
     response = client.models.generate_content(
         model="gemini-3.6-flash",
         contents=prompt,
+        config={
+            "response_mime_type": "application/json",
+            "response_schema": ReviewReport,
+            "temperature": 0.1,  # Ниска температура за максимална точност и обективност
+        }
     )
 
-    return response.text
+    # Парсваме резултата директно в нашия Pydantic модел
+    parsed_report = ReviewReport.model_validate_json(response.text)
+    return parsed_report
